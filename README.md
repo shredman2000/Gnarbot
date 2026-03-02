@@ -1,0 +1,2 @@
+# Gnarbot
+Discord music bot
