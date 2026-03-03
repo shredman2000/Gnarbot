@@ -14,9 +14,9 @@ const client = new Client({
 
 const nodes = [
     {
-        name: "Localhost",
-        url: "localhost:2333",
-        auth: "youshallnotpass"
+        name: "Lavalink",
+        url: `${process.env.LAVALINK_HOST}:${process.env.LAVALINK_PORT}`,
+        auth: process.env.LAVALINK_PASSWORD
     }
 ];
 const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), nodes);
@@ -26,7 +26,7 @@ shoukaku.on('error', (name, error) => console.error(`Lavalink node ${name} error
 shoukaku.on('close', (name, code, reason) => console.log(`Node ${name} closed: ${code} ${reason}`));
 shoukaku.on('disconnect', (name, players, moved) => console.log(`Node ${name} disconnected`));
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
 
