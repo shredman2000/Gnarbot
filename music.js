@@ -7,24 +7,72 @@ const { getData, getPreview, getTracks, getDetails } = require('spotify-url-info
 const {EmbedBuilder} = require('discord.js')
 module.exports = (client, shoukaku) => {
 
+// helper function for finding or creating new queue, avoid race conditions
+async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
+    let queue = queues.get(guildId);
+
+    console.log('getOrCreateQueue called');
+    console.log('queue exists:', !!queue);
+    console.log('shoukaku.players has guild:', shoukaku.players.has(guildId));
+    console.log('shoukaku.players keys:', [...shoukaku.players.keys()]);
+
+    if (!queue || !queue.player || queue.player.connection?.disconnected) {
+            // Manually clear Shoukaku's internal maps since destroy() isn't doing it
+        try {
+            const stale = shoukaku.players.get(guildId);
+            if (stale) await stale.destroy();
+        } catch {}
+        
+        // Force remove from both internal maps
+        shoukaku.players.delete(guildId);
+        shoukaku.connections.delete(guildId);
+
+        console.log('attempting joinVoiceChannel...');
+
+            const player = await shoukaku.joinVoiceChannel({
+                guildId,
+                channelId: voiceChannel.id,
+                shardId: 0,
+                deaf: true
+            });
+
+            queue = {
+                player,
+                tracks: [],
+                playing: false,
+                textChannel
+            };
+
+            queues.set(guildId, queue);
+            player.on('end', () => playNextFromQueue(guildId));
+        }
+
+        return queue;
+    }
+
     async function playNextFromQueue(guildId) {
         const queue = queues.get(guildId);
-        if(!queue) { return; }
+        if (!queue) return;
 
         const nextTrack = queue.tracks.shift();
-
-        if (!nextTrack) { // leave vc and delete queue if no more songs in queue
-            await queue.player.stopTrack().catch(() => {});
-            await queue.player.connection.disconnect().catch(() => {});
+        if (!nextTrack) {
+            queue.playing = false;
+            try { await queue.player.stopTrack(); } catch {}
+            try { await queue.player.destroy(); } catch {}
             queues.delete(guildId);
             return;
         }
-        await incrementUserStats(guildId, nextTrack.requestedBy); // increment users requested song total.
+
+        await incrementUserStats(guildId, nextTrack.requestedBy);
         queue.playing = true;
-        await queue.player.playTrack({
-            track: { encoded: nextTrack.encoded }
-        });
-        await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+
+        try {
+            await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
+            await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+        } catch (err) {
+            console.error('playNextFromQueue error:', err);
+            queues.delete(guildId);
+        }
     }
 
     async function skipCurrent(guildId) {
@@ -109,42 +157,20 @@ module.exports = (client, shoukaku) => {
                     title: trackTitle,
                     requestedBy: interaction.user.id
                 };
-                let queue = queues.get(interaction.guild.id); // get queue for this interaction
-                let player;
-                if (!queue) { // if guild has no queue register one.
-                    const player = await shoukaku.joinVoiceChannel({
-                        guildId: interaction.guildId,
-                        channelId: voiceChannel.id,
-                        shardId: 0,
-                        deaf: true
-                    })
-                    queue = {
-                        player,
-                        tracks: [],
-                        playing: false,
-                        textChannel: interaction.channel
-                    }
+                const voiceChannel = interaction.member.voice.channel;          
 
-                    queues.set(interaction.guild.id, queue)
-
-                    // when song ends, play next
-                    player.on('end', () => {
-                        playNextFromQueue(interaction.guild.id);
-                    })
-                }
+                const queue = await getOrCreateQueue(interaction.guild.id, voiceChannel, interaction.channel);
 
                 if (interaction.commandName === 'play') { 
-                    const queueWasEmpty = !queue || queue.tracks.length === 0;
-                    //add track to queue
-                    addToQueue(interaction.guild.id, trackObj, queueWasEmpty ? true : false, interaction);
+                    const queueWasEmpty = queue.tracks.length === 0;
+                    await addToQueue(interaction.guild.id, trackObj, queueWasEmpty ? true : false, interaction);
 
                     if (!queue.playing) {
                         await playNextFromQueue(interaction.guild.id);
                     } 
-                }
-                else if (interaction.commandName === 'playnext') {
+                } else if (interaction.commandName === 'playnext') {
                     insertNext(interaction.guild.id, trackObj);
-                    
+
                     if (!queue.playing) {
                         await playNextFromQueue(interaction.guild.id);
                     } 
@@ -169,7 +195,7 @@ module.exports = (client, shoukaku) => {
             showQueue(interaction.guild.id, interaction);
         }
         if (interaction.commandName === 'playlist') {
-            await interaction.deferReply();
+            //await interaction.deferReply();
             const url = interaction.options.getString('url');
             const voiceChannel = interaction.member.voice.channel;
 
@@ -202,26 +228,7 @@ module.exports = (client, shoukaku) => {
                         selectedTracks.push(tracks[randomIndex]);
                     }
                 }
-
-                let queue = queues.get(interaction.guild.id);
-                if (!queue || !queue.player || queue.player.connection?.disconnected) {
-                    const player = await shoukaku.joinVoiceChannel({
-                        guildId: interaction.guildId,
-                        channelId: voiceChannel.id,
-                        shardId: 0,
-                        deaf: true
-                    });
-
-                    queue = {
-                        player,
-                        tracks: [],
-                        playing: false,
-                        textChannel: interaction.channel
-                    };
-
-                    queues.set(interaction.guild.id, queue);
-                    player.on('end', () => playNextFromQueue(interaction.guild.id));
-                }
+                const queue = await getOrCreateQueue(interaction.guild.id, voiceChannel, interaction.channel);
 
                 const node = [...shoukaku.nodes.values()][0];
 
@@ -327,28 +334,24 @@ module.exports = (client, shoukaku) => {
             interaction.reply({ embeds: [embed]})
         }
     });
-    // clean up if bot is manually disconnected
+    // dont remember what this does other than clears stale bot states, but DONT DELETE
     client.on('voiceStateUpdate', async (oldState, newState) => {
-        // ignore if not a guild or bot not involved
         if (!oldState.guild) return;
 
         const guildId = oldState.guild.id;
-        const queue = queues.get(guildId);
-        if (!queue) return;
-
         const botId = client.user.id;
+        const botLeft = !newState.channelId && oldState.member?.id === botId;
 
-        // if bot was in a VC and got disconnected
-        const botWasInVC = oldState.channelId === queue.player?.connection?.channelId;
-        const botLeft = !newState.channelId && oldState.member.id === botId;
-
-        if (botWasInVC && botLeft) {
-            console.log(`Bot was disconnected from VC in guild ${guildId}, cleaning up queue...`);
-            try {
-                await queue.player.stopTrack().catch(() => {});
-                await queue.player.destroy(); // frees Shoukaku internal mapping
-            } catch {}
+        if (botLeft) {
+            const queue = queues.get(guildId);
             queues.delete(guildId);
+            if (queue) {
+                try { await queue.player.stopTrack(); } catch {}
+                try { await queue.player.destroy(); } catch {}
+            }
+            // Force clear Shoukaku internals
+            shoukaku.players.delete(guildId);
+            shoukaku.connections.delete(guildId);
         }
     });
 };
