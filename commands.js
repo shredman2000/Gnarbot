@@ -31,6 +31,12 @@ try {
         .setDescription('Get the current queue')
     commandBuilders.push(getQueue.toJSON())
 
+    const playlist = new SlashCommandBuilder()
+        .setName('playlist')
+        .setDescription('Paste URL to a spotify playlist')
+        .addStringOption(option => option.setName('url').setDescription('Paste spotify playlist URL'))
+    commandBuilders.push(playlist.toJSON())
+
 } catch (err) {
   console.error("Error building commands:", err);
 }

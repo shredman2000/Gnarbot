@@ -24,8 +24,11 @@
     "discord.js": "^14.25.1",
     "dotenv": "^17.3.1",
     "erela.js": "^2.4.0",
+    "isomorphic-unfetch": "^4.0.2",
+    "node-fetch": "^3.3.2",
     "play-dl": "^1.9.7",
     "shoukaku": "^4.3.0",
+    "spotify-url-info": "^3.2.18",
     "ytsr": "^3.8.4"
   }
 }
