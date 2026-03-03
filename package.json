@@ -29,6 +29,7 @@
     "play-dl": "^1.9.7",
     "shoukaku": "^4.3.0",
     "spotify-url-info": "^3.2.18",
+    "sqlite3": "^5.1.7",
     "ytsr": "^3.8.4"
   }
 }

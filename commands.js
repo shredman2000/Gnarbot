@@ -42,6 +42,11 @@ try {
         .setDescription('Retrieve a list of available commands')
     commandBuilders.push(getCommands.toJSON())
 
+    const stats = new SlashCommandBuilder()
+        .setName('stats')
+        .setDescription('Retrieve a leaderboard of how many songs each user has played')
+    commandBuilders.push(stats.toJSON())
+
 } catch (err) {
   console.error("Error building commands:", err);
 }

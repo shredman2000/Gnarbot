@@ -26,7 +26,7 @@ shoukaku.on('error', (name, error) => console.error(`Lavalink node ${name} error
 shoukaku.on('close', (name, code, reason) => console.log(`Node ${name} closed: ${code} ${reason}`));
 shoukaku.on('disconnect', (name, players, moved) => console.log(`Node ${name} disconnected`));
 
-client.once("clientReady", async () => {
+client.once("ready", async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
 

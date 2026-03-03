@@ -1,6 +1,8 @@
 
 const queues = new Map();
 const fetch = require('isomorphic-unfetch');
+const { incrementUserStats, getUserStats, getLeaderBoard } = require('./database.js')
+
 const { getData, getPreview, getTracks, getDetails } = require('spotify-url-info')(fetch);
 const {EmbedBuilder} = require('discord.js')
 module.exports = (client, shoukaku) => {
@@ -17,7 +19,7 @@ module.exports = (client, shoukaku) => {
             queues.delete(guildId);
             return;
         }
-
+        await incrementUserStats(guildId, nextTrack.requestedBy); // increment users requested song total.
         queue.playing = true;
         await queue.player.playTrack({
             track: { encoded: nextTrack.encoded }
@@ -104,9 +106,11 @@ module.exports = (client, shoukaku) => {
 
                 const trackObj = {
                     encoded: track,
-                    title: trackTitle
+                    title: trackTitle,
+                    requestedBy: interaction.user.id
                 };
                 let queue = queues.get(interaction.guild.id); // get queue for this interaction
+                let player;
                 if (!queue) { // if guild has no queue register one.
                     const player = await shoukaku.joinVoiceChannel({
                         guildId: interaction.guildId,
@@ -200,7 +204,7 @@ module.exports = (client, shoukaku) => {
                 }
 
                 let queue = queues.get(interaction.guild.id);
-                if (!queue) {
+                if (!queue || !queue.player || queue.player.connection?.disconnected) {
                     const player = await shoukaku.joinVoiceChannel({
                         guildId: interaction.guildId,
                         channelId: voiceChannel.id,
@@ -253,7 +257,7 @@ module.exports = (client, shoukaku) => {
                                     break;
                             }
 
-                            return { encoded: track, title: trackTitle };
+                            return { encoded: track, title: trackTitle, requestedBy: interaction.user.id };
                         } catch {
                             return null;
                         }
@@ -294,13 +298,57 @@ module.exports = (client, shoukaku) => {
                     { name: '/playnext [`song name or youtube URL`]', value: 'Inserts a song in queue to play next', inline: false },
                     { name: '/playlist [`Spotify playlist URL`] [`number of songs to queue - optional`]' , value: 'Retrieves songs from a spotify playlist', inline: false },
                     { name: '/skip', value: 'Skips current song', inline: false },
-                    { name: '/getqueue', value: 'Returns current queue', inline: false}
+                    { name: '/getqueue', value: 'Returns current queue', inline: false},
+                    { name: '/stats', value: 'Returns leaderboard of how many songs each user has played', inline: false}
                 )
-                .setFooter({ text: 'Planned features: /stats - list of how many songs each member has played'})
+                .setFooter({ text: 'Planned features: /stats - add each users most played song, /playlist apple music support'})
 
 
             interaction.channel.send({embeds: [embed]})
 
+        }
+        if (interaction.commandName === 'stats') {
+            const guildId = interaction.guild.id;
+
+            const stats = await getLeaderBoard(guildId);
+
+            const embed = new EmbedBuilder()
+                .setTitle('Server stats')
+                .setColor('#8A2BE2')
+                .setDescription('How many songs each user has played')
+                    .addFields(
+                        stats.map(stat => {
+                            const user = interaction.guild.members.cache.get(stat.user_id);
+                            const username = user ? user.user.username : `Unknown User (${stat.user_id})`;
+                            return { name: username, value: `${stat.songs_played} songs`, inline: false}
+                        })
+                    )
+
+            interaction.reply({ embeds: [embed]})
+        }
+    });
+    // clean up if bot is manually disconnected
+    client.on('voiceStateUpdate', async (oldState, newState) => {
+        // ignore if not a guild or bot not involved
+        if (!oldState.guild) return;
+
+        const guildId = oldState.guild.id;
+        const queue = queues.get(guildId);
+        if (!queue) return;
+
+        const botId = client.user.id;
+
+        // if bot was in a VC and got disconnected
+        const botWasInVC = oldState.channelId === queue.player?.connection?.channelId;
+        const botLeft = !newState.channelId && oldState.member.id === botId;
+
+        if (botWasInVC && botLeft) {
+            console.log(`Bot was disconnected from VC in guild ${guildId}, cleaning up queue...`);
+            try {
+                await queue.player.stopTrack().catch(() => {});
+                await queue.player.destroy(); // frees Shoukaku internal mapping
+            } catch {}
+            queues.delete(guildId);
         }
     });
 };
