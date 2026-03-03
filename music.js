@@ -164,6 +164,7 @@ module.exports = (client, shoukaku) => {
             showQueue(interaction.guild.id, interaction);
         }
         if (interaction.commandName === 'playlist') {
+            await interaction.deferReply();
             const url = interaction.options.getString('url');
             const voiceChannel = interaction.member.voice.channel;
 
