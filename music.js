@@ -2,6 +2,7 @@
 const queues = new Map();
 const fetch = require('isomorphic-unfetch');
 const { getData, getPreview, getTracks, getDetails } = require('spotify-url-info')(fetch);
+const {EmbedBuilder} = require('discord.js')
 module.exports = (client, shoukaku) => {
 
     async function playNextFromQueue(guildId) {
@@ -282,6 +283,24 @@ module.exports = (client, shoukaku) => {
                 console.error(err);
                 interaction.editReply(`Something went wrong: ${err.message}`);
             }
+        }
+        if (interaction.commandName === 'gnar') {
+            const embed = new EmbedBuilder()
+                .setTitle('GnarBot Commands')
+                .setColor('#8A2BE2')
+                .setDescription('List of available commands')
+                .addFields(
+                    { name: '/play [`song name or youtube URL`]', value: 'Plays the requested song', inline: false },
+                    { name: '/playnext [`song name or youtube URL`]', value: 'Inserts a song in queue to play next', inline: false },
+                    { name: '/playlist [`Spotify playlist URL`] [`number of songs to queue - optional`]' , value: 'Retrieves songs from a spotify playlist', inline: false },
+                    { name: '/skip', value: 'Skips current song', inline: false },
+                    { name: '/getqueue', value: 'Returns current queue', inline: false}
+                )
+                .setFooter({ text: 'Planned features: /stats - list of how many songs each member has played'})
+
+
+            interaction.channel.send({embeds: [embed]})
+
         }
     });
 };

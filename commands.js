@@ -37,6 +37,11 @@ try {
         .addStringOption(option => option.setName('url').setDescription('Paste spotify playlist URL'))
     commandBuilders.push(playlist.toJSON())
 
+    const getCommands = new SlashCommandBuilder()
+        .setName('gnar')
+        .setDescription('Retrieve a list of available commands')
+    commandBuilders.push(getCommands.toJSON())
+
 } catch (err) {
   console.error("Error building commands:", err);
 }
