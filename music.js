@@ -185,7 +185,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
         }
         if (interaction.commandName === 'skip') {
             const queue = queues.get(interaction.guild.id);
-            if (!queue || queue.tracks.length === 0) {
+            if (!queue || !queue.playing) {
                 return interaction.reply("Nothing is playing.");
             }
             await skipCurrent(interaction.guild.id);
