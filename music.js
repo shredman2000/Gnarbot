@@ -57,9 +57,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
         const nextTrack = queue.tracks.shift();
         if (!nextTrack) {
             queue.playing = false;
-            try { await queue.player.stopTrack(); } catch {}
-            try { await queue.player.destroy(); } catch {}
-            queues.delete(guildId);
+                
             return;
         }
 
@@ -89,16 +87,24 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
     }
     async function addToQueue(guildId, trackObj, suppressMessage = false, interaction = null) {
         const queue = queues.get(guildId);
-        if (!queue) return;
+        if (!queue) {
+            const member = interaction?.member;
+            const voiceChannel = member?.voice.channel;
+            if (!voiceChannel) { return; }
+            queue = await getOrCreateQueue(guildId, voiceChannel, interaction.channel)
+        }
         queue.tracks.push(trackObj);
         const position = queue.tracks.length;
         
-            if (interaction) {
-                await interaction.editReply(`Added to queue: **${trackObj.title}** in position: **${position}**`);
-            }
-            else {
-                await queue.textChannel.send(`Added to queue: **${trackObj.title}** in position: **${position}**`);
-            }
+        if (interaction) {
+            await interaction.editReply(`Added to queue: **${trackObj.title}** in position: **${position}**`);
+        }
+        else {
+            await queue.textChannel.send(`Added to queue: **${trackObj.title}** in position: **${position}**`);
+        }
+        if (!queue.playing) {
+            await playNextFromQueue(guildId);
+        }
         
     }
 
