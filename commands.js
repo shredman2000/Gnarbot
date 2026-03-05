@@ -12,13 +12,58 @@ try {
     const play = new SlashCommandBuilder()
         .setName('play')
         .setDescription('Request a song to play')
-        .addStringOption(option => option.setName('song').setDescription('Youtube URL or name + artist').setRequired(true));
+        .addStringOption(option => option.setName('song').setDescription('Youtube URL or name + artist').setRequired(true))
+        .addBooleanOption(option => 
+            option.setName('bassboost')
+                .setDescription('Enable bass boost for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('eightd')
+                .setDescription('Enable 8D audio for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('latenight')
+                .setDescription('Enable late night smoothing for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('lofi')
+                .setDescription('Enable lofi for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('slowed')
+                .setDescription('Enable slowed + reverb for this song')
+                .setRequired(false)
+        )
     commandBuilders.push(play.toJSON());
 
     const playNext = new SlashCommandBuilder()
         .setName('playnext')
         .setDescription('Request a song to play next')
-        .addStringOption(option => option.setName('song').setDescription('Youtube URL or name + artist').setRequired(true));
+        .addStringOption(option => option.setName('song').setDescription('Youtube URL or name + artist').setRequired(true))
+        .addBooleanOption(option => 
+            option.setName('bassboost')
+                .setDescription('Enable bass boost for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('eightd')
+                .setDescription('Enable 8D audio for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('latenight')
+                .setDescription('Enable late night smoothing for this song')
+                .setRequired(false)
+        )
+        .addBooleanOption(option => 
+            option.setName('lofi')
+                .setDescription('Enable lofi for this song')
+                .setRequired(false)
+        );
     commandBuilders.push(playNext.toJSON());
 
     const skip = new SlashCommandBuilder()
@@ -35,6 +80,7 @@ try {
         .setName('playlist')
         .setDescription('Paste URL to a spotify playlist')
         .addStringOption(option => option.setName('url').setDescription('Paste spotify playlist URL'))
+        .addIntegerOption(option => option.setName('songs').setDescription('How many songs to retrieve from the playlist (Integer) max 30'))
     commandBuilders.push(playlist.toJSON())
 
     const getCommands = new SlashCommandBuilder()

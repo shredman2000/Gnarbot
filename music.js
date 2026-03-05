@@ -1,4 +1,4 @@
-
+const { EQList } = require("lavalink-client");
 const queues = new Map();
 const fetch = require('isomorphic-unfetch');
 const { incrementUserStats, getUserStats, getLeaderBoard } = require('./database.js')
@@ -57,16 +57,157 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
         const nextTrack = queue.tracks.shift();
         if (!nextTrack) {
             queue.playing = false;
-                
+
             return;
         }
-
+        const lofi = nextTrack.lofi || false;
+        const slowed = nextTrack.slowed || false;
+        const bassBoosted = nextTrack.bassBoosted || false;
+        const eightD = nextTrack.eightD || false;
+        const lateNight = nextTrack.lateNight || false;
+        const activeFilters = []
         await incrementUserStats(guildId, nextTrack.requestedBy);
         queue.playing = true;
 
         try {
-            await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
-            await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+            const playOptions = {track : {encoded: nextTrack.encoded}}
+            const filters = {}
+        
+            if (lofi) {
+                activeFilters.push("Lofi")
+                // EQ: smooth highs, boost lows/mids a bit
+                filters.equalizer = [
+                    { band: 0, gain: 0.1 },
+                    { band: 1, gain: 0.08 },
+                    { band: 2, gain: 0.05 },
+                    { band: 3, gain: 0 },
+                    { band: 4, gain: -0.05 },
+                    { band: 5, gain: -0.08 },
+                    { band: 6, gain: -0.1 },
+                    { band: 7, gain: -0.12 },
+                    { band: 8, gain: -0.12 },
+                    { band: 9, gain: -0.15 },
+                    { band: 10, gain: -0.15 },
+                    { band: 11, gain: -0.15 },
+                    { band: 12, gain: -0.12 },
+                    { band: 13, gain: -0.1 },
+                    { band: 14, gain: -0.08 },
+                ];
+
+                // Slight lowpass filter to soften highs (classic lofi muffled effect)
+                filters.lowPass = {
+                    smoothing: 20, // higher = softer
+                    cutoff: 2000 // cut off frequencies above ~2kHz
+                };
+
+                // Optional gentle distortion or bitcrusher for vinyl/hiss effect
+                filters.karaoke = {
+                    level: 0.1,   // subtly simulates “mono” or narrow sound
+                    monoLevel: 0.1,
+                    filterBand: 220,
+                    filterWidth: 100
+                };
+
+                // Slight volume reduction for smoother sound
+                filters.volume = 0.95;
+            }
+            if (slowed) {
+                activeFilters.push("Slowed")
+                // timescale slows down and lowers pitch slightly
+                filters.timescale = {
+                    speed: 0.9,   // slower
+                    pitch: 0.9,    // lower pitch
+                    rate: 1.0
+                };
+
+                // subtle vibrato for space/reverb-like effect
+                filters.vibrato = {
+                    frequency: 5.0,
+                    depth: 0.2
+                };
+
+                // subtle tremolo for lofi wobble
+                filters.tremolo = {
+                    frequency: 4.0,
+                    depth: 0.1
+                };
+
+                // EQ tweak: cut high frequencies, boost lows a bit
+                filters.equalizer = [
+                    { band: 0, gain: 0.1 },
+                    { band: 1, gain: 0.05 },
+                    { band: 2, gain: 0 },
+                    { band: 3, gain: -0.05 },
+                    { band: 4, gain: -0.05 },
+                    { band: 5, gain: -0.1 },
+                    { band: 6, gain: -0.1 },
+                    { band: 7, gain: -0.15 },
+                    { band: 8, gain: -0.15 },
+                    { band: 9, gain: -0.15 },
+                    { band: 10, gain: -0.1 },
+                    { band: 11, gain: -0.1 },
+                    { band: 12, gain: -0.05 },
+                    { band: 13, gain: 0 },
+                    { band: 14, gain: 0 },
+                ];
+
+                // slightly reduce overall volume for smoothness
+                filters.volume = 0.9;
+            }
+            if (bassBoosted) {
+                filters.equalizer = [
+                    { band: 0, gain: 0.15 },
+                    { band: 1, gain: 0.12 },
+                    { band: 2, gain: 0.08 },
+                    { band: 3, gain: 0.05 },
+                    { band: 4, gain: 0.03 },
+                    { band: 5, gain: 0 },
+                    { band: 6, gain: -0.02 },
+                    { band: 7, gain: -0.05 },
+                    { band: 8, gain: 0 },
+                    { band: 9, gain: 0 },
+                    { band: 10, gain: 0 },
+                    { band: 11, gain: 0 },
+                    { band: 12, gain: 0 },
+                    { band: 13, gain: 0 },
+                    { band: 14, gain: 0 },
+                ];
+
+            }
+
+            if (eightD) {
+                activeFilters.push("8D Audio")
+                filters.rotation = {
+                    rotationHz: 0.1,
+                    rotationMode: "surround", // if supported
+                    rotationAngle: 0.8 // wide but not extreme
+                };
+            }
+
+            if (lateNight) {
+                activeFilters.push("Late Night")
+                filters.equalizer = filters.equalizer || []; 
+
+                filters.equalizer.push(
+                    { band: 3, gain: -0.05 },
+                    { band: 4, gain: -0.05 },
+                    { band: 5, gain: 0.03 }
+                );
+
+                filters.volume = 0.9;
+            }
+            if (Object.keys(filters).length > 0) {
+                await queue.player.setFilters(filters);
+            } else {
+                await queue.player.setFilters({}); // clears all filters
+            }
+            await queue.player.playTrack(playOptions);
+            let nowPlayingMsg = `Now playing: **${nextTrack.title}**`;
+            if (activeFilters.length > 0) {
+                nowPlayingMsg += ` | Filters: ${activeFilters.join(", ")}`;
+            }
+
+            await queue.textChannel.send(nowPlayingMsg);
         } catch (err) {
             console.error('playNextFromQueue error:', err);
             queues.delete(guildId);
@@ -121,6 +262,11 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
     client.on('interactionCreate', async interaction => {
         if (!interaction.isChatInputCommand()) return;
         if (interaction.commandName === 'play' || interaction.commandName === 'playnext') {
+            const bassBoosted = interaction.options.getBoolean('bassboost') || false;
+            const eightD = interaction.options.getBoolean('eightd') || false;
+            const lateNight = interaction.options.getBoolean('latenight') || false;
+            const lofi = interaction.options.getBoolean('lofi') || false;
+            const slowed = interaction.options.getBoolean('slowed') || false;
 
             const song = interaction.options.getString('song');
             const voiceChannel = interaction.member.voice.channel;
@@ -161,7 +307,12 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
                 const trackObj = {
                     encoded: track,
                     title: trackTitle,
-                    requestedBy: interaction.user.id
+                    requestedBy: interaction.user.id,
+                    bassBoosted,
+                    eightD,
+                    lateNight,
+                    lofi,
+                    slowed
                 };
                 const voiceChannel = interaction.member.voice.channel;          
 
@@ -204,6 +355,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
             //await interaction.deferReply();
             const url = interaction.options.getString('url');
             const voiceChannel = interaction.member.voice.channel;
+            const numSongs = interaction.options.getInteger('songs')
 
             if (!voiceChannel) {
                 return interaction.reply("You must be in a voice channel first");
@@ -225,7 +377,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
                 // Pick 15 random tracks from the full playlist
                 const selectedTracks = [];
                 const indicesUsed = new Set();
-                const maxTracks = Math.min(15, tracks.length);
+                const maxTracks = Math.min(numSongs || tracks.length, 30);
 
                 while (selectedTracks.length < maxTracks) {
                     const randomIndex = Math.floor(Math.random() * tracks.length);

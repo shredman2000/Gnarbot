@@ -25,6 +25,7 @@
     "dotenv": "^17.3.1",
     "erela.js": "^2.4.0",
     "isomorphic-unfetch": "^4.0.2",
+    "lavalink-client": "^2.9.7",
     "node-fetch": "^3.3.2",
     "play-dl": "^1.9.7",
     "shoukaku": "^4.3.0",
