@@ -110,22 +110,18 @@ module.exports = (client, shoukaku) => {
                 let djText;
 
                 if (queue.pregenTTS) {
-                    // Use pre-generated TTS
                     ttsFilePath = queue.pregenTTS.filePath;
                     djText = queue.pregenTTS.text;
+                    nextTrack = queue.pregenTTS.nextTrack; // use the pre-resolved track
                     queue.pregenTTS = null;
                 } else {
-                    // Fallback: generate now (first song or pregen failed)
                     djText = await getDjText(nextTrack.title, nextTrack.artist);
                     ttsFilePath = await getTTSTempFile(djText);
                 }
 
                 // Resolve both in parallel
                 const ttsUrl = `http://gnarbot:3001/tts/${path.basename(ttsFilePath)}`;
-                const [ttsResult, trackResult] = await Promise.all([
-                    node.rest.resolve(ttsUrl),
-                    node.rest.resolve(`ytsearch:${nextTrack.title} ${nextTrack.artist}`)
-                ]);
+                const ttsResult = await node.rest.resolve(ttsUrl);
 
                 if (!ttsResult || !ttsResult.data) {
                     await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
@@ -318,14 +314,31 @@ module.exports = (client, shoukaku) => {
         if (!queue || !queue.djMode) return;
 
         try {
+            const node = shoukaku.nodes.get("Lavalink");
             const djSong = await db.getDjSong(guildId);
             if (!djSong) return;
 
-            const djText = await getDjText(djSong.song_name, djSong.song_artist);
+            // Resolve the actual track at the same time so they're tied together
+            const [djText, trackResult] = await Promise.all([
+                getDjText(djSong.song_name, djSong.song_artist),
+                node.rest.resolve(`ytsearch:${djSong.song_artist} ${djSong.song_name}`)
+            ]);
+
+            if (!trackResult?.data?.length) return;
+
             const ttsFilePath = await getTTSTempFile(djText);
 
-            queue.pregenTTS = { filePath: ttsFilePath, text: djText };
-            console.log('TTS pre-generated for next track');
+            // Store everything together so the song and TTS are always in sync
+            queue.pregenTTS = {
+                filePath: ttsFilePath,
+                text: djText,
+                nextTrack: {
+                    encoded: trackResult.data[0].encoded,
+                    title: djSong.song_name,
+                    artist: djSong.song_artist,
+                }
+            };
+            console.log('TTS pre-generated for next track:', djSong.song_name);
         } catch (err) {
             console.error('TTS pre-generation error:', err);
             queue.pregenTTS = null;

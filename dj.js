@@ -58,13 +58,7 @@ async function getDjText(songTitle, artist) {
         `I've been sitting in this booth for eleven hours and the only thing keeping me going is ${songTitle}${artist ? ` by ${artist}` : ""}. Here we go.`,
         `Fun fact: nobody asked for my opinion but I'm going to play ${songTitle}${artist ? ` by ${artist}` : ""} anyway.`,
         `According to my calculations, the exact right song for this moment is ${songTitle}${artist ? ` by ${artist}` : ""}. The math does not lie.`,
-        `I spilled my coffee, lost my keys, and forgot my own name today. But I remembered to play ${songTitle}${artist ? ` by ${artist}` : ""}. Priorities.`,
-        `Some say ${songTitle}${artist ? ` by ${artist}` : ""} can be heard echoing in empty parking garages at 3am. We're about to test that theory.`,
-        `GnarBot Radio is not responsible for any spontaneous dancing, crying, or existential clarity caused by ${songTitle}${artist ? ` by ${artist}` : ""}.`,
         `I asked the void what to play next. The void whispered back ${songTitle}${artist ? ` by ${artist}` : ""}. I'm not going to argue with the void.`,
-        `This song walked so that your entire mood could run. ${songTitle}${artist ? ` by ${artist}` : ""}. You'll understand in a moment.`,
-        `Rumor has it ${songTitle}${artist ? ` by ${artist}` : ""} once made a grown man cry in a Applebee's parking lot. Let's see what it does to you.`,
-        `I have no memory of how this got in the queue but honestly? Respect. ${songTitle}${artist ? ` by ${artist}` : ""}.`,
         `The council has deliberated. The council has decided. ${songTitle}${artist ? ` by ${artist}` : ""}. Meeting adjourned.`,
         `If ${songTitle}${artist ? ` by ${artist}` : ""} were a smell it would be petrichor and a little bit of danger. Anyway here it is.`,
 
@@ -89,12 +83,11 @@ async function getDjText(songTitle, artist) {
         `ATTENTION. ATTENTION. ${songTitle}${artist ? ` by ${artist}` : ""}. THAT IS ALL. THAT IS ALL. YOU MAY RETURN TO YOUR LIVES.`,
         `I need everyone to remain calm. ${songTitle}. Stay calm. ${artist ? `By ${artist}.` : ""} I said CALM. Okay. Here it is.`,
         `Oh. Oh no. Oh no no no. ${songTitle}${artist ? ` by ${artist}` : ""}. Oh YES. OH YES. Let's GO.`,
-        `WAIT WAIT WAIT WAIT WAIT. ${songTitle}. Did you hear that. ${songTitle}${artist ? ` by ${artist}` : ""}. WAIT. Okay go.`,
         `Initiating. Song. Protocol. ${songTitle}. ${artist ? `Artist detected. ${artist}.` : ""} NOW.`,
         `${songTitle}. No wait. ${songTitle}. ${artist ? `${artist}.` : ""} ${songTitle}. Yeah. ${songTitle}. Okay I'm done. Play.`,
         `GNARBOTTTTT. ${songTitle}. GNARBOTTTTT. ${artist ? `${artist}` : ""}. GNARBOTTTTTT. ${songTitle}. Let's go.`,
         `SongTitle equals ${songTitle}. Artist equals ${artist ? `${artist}` : "unknown"}. Hype level equals MAXIMUM. Playing now.`,
-        `[moans] ${songTitle} nununununununun ${artist ? `${artist}` : "unknown"}     anununu`,
+        `[moans] ${songTitle} [moans] ${artist ? `${artist}` : "unknown"}     [short moan]`,
         `eeeieiooaaauauaeeeoeoeoeiuaaaeoeoauuaaoeeeaeaeeouuaaioa. ${songTitle} oeoeoeiuaaaeoeoauuaaoeee ${artist ? `${artist}` : "unknown"} eoeoauuaaoeee`,
     ];
 
