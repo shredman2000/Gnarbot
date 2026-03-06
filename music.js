@@ -48,7 +48,13 @@ module.exports = (client, shoukaku) => {
                 };
 
                 queues.set(guildId, queue);
-                player.on('end', () => playNextFromQueue(guildId));
+                player.on('end', () => {
+                    if (queue.suppressNextEnd) {
+                        queue.suppressNextEnd = false;
+                        return;
+                    }
+                    playNextFromQueue(guildId);
+                });
             }
 
         return queue;
@@ -96,10 +102,10 @@ module.exports = (client, shoukaku) => {
 
         // dj commentary
         if (queue.djMode) {
-            console.log(shoukaku.nodes); 
+            queue.playing = true;
             try {
                 const djText = await getDjText(nextTrack.title, nextTrack.artist);
-                await queue.textChannel.send(`${djText}`);
+                //await queue.textChannel.send(`${djText}`);
 
                 const ttsFilePath = await getTTSTempFile(djText); 
                 const ttsUrl = `http://gnarbot:3001/tts/${path.basename(ttsFilePath)}`;
@@ -131,8 +137,9 @@ module.exports = (client, shoukaku) => {
                     return;
                 }
 
-                // Play TTS immediately
+                queue.suppressNextEnd = true;
                 await queue.player.playTrack({ track: { encoded: ttsEncoded } });
+
                 // After TTS ends, play the main track
                 queue.player.once("end", async () => {
                     await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
@@ -140,7 +147,7 @@ module.exports = (client, shoukaku) => {
                     fs.unlink(ttsFilePath, () => {});
                 });
 
-                return; // exit so main track doesn't play twice
+                return;
             } catch (err) {
                 console.error("DJ TEXT ERROR: ", err);
             }
@@ -606,11 +613,13 @@ module.exports = (client, shoukaku) => {
                 voiceChannel,
                 interaction.channel,
             );
+            
             queue.djMode = true;
 
             if (!queue.playing) {
                 await playNextFromQueue(interaction.guild.id);
             }
+            await interaction.editReply("DJ mode enabled!");
 
         }
     });
