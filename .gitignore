@@ -3,3 +3,4 @@ auth
 node_modules/
 *.db
 docker-compose.yml
+*.mp3

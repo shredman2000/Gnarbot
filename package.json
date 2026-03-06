@@ -24,6 +24,8 @@
     "discord.js": "^14.25.1",
     "dotenv": "^17.3.1",
     "erela.js": "^2.4.0",
+    "express": "^5.2.1",
+    "google-tts-api": "^2.0.2",
     "isomorphic-unfetch": "^4.0.2",
     "lavalink-client": "^2.9.7",
     "node-fetch": "^3.3.2",

@@ -1,7 +1,17 @@
 // dj.js
 const db = require('./database.js')
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const gTTS = require('google-tts-api');
+const { Readable } = require('stream');
+const tmpDir = path.join(__dirname, 'tmp');
+if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
 
-
+function getTempFilePath() {
+    const fileName = `gnarbot_tts_${Date.now()}.mp3`;
+    return path.join(tmpDir, fileName);
+}
 
 // function to retrieve the text for the TTS dj.
 async function getDjText(songTitle, artist) {
@@ -21,4 +31,40 @@ async function getDjText(songTitle, artist) {
 }
 
 
-module.exports = { getDjText}
+
+async function getTTSTempFile(djText) {
+    const url = gTTS.getAudioUrl(djText, {
+        lang: 'en',
+        slow: false,
+        host: 'https://translate.google.com'
+    });
+
+    const res = await fetch(url); // Node 18+ has this globally
+    if (!res.ok) throw new Error(`Failed to fetch TTS: ${res.status}`);
+
+    const buffer = await res.arrayBuffer();
+    const tempFile = getTempFilePath();
+    fs.writeFileSync(tempFile, Buffer.from(buffer));
+    return tempFile;
+}
+
+
+async function playTTS(player, djText, requestedBy) {
+    const tempFile = await getTTSTempFile(djText);
+    const fileName = path.basename(tempFile);
+
+    const ttsTrack = {
+        encoded: `http://gnarbot:3001/tts/${fileName}`, 
+        title: `DJ Commentary: ${djText}`,
+        requestedBy,
+        isDJSnippet: true
+    };
+
+    await player.update({ track: ttsTrack });
+
+    // Delete after 1 minute
+    setTimeout(() => fs.unlink(tempFile, () => {}), 60_000);
+}
+
+
+module.exports = { getDjText, playTTS, getTempFilePath, getTTSTempFile}

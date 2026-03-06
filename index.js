@@ -1,5 +1,6 @@
 //index.js
 require('dotenv').config();
+require('./ttsServer.js');
 const { Client, GatewayIntentBits } = require('discord.js');
 const { Shoukaku, Connectors } = require("shoukaku");
 

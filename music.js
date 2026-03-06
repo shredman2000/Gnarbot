@@ -1,8 +1,9 @@
 const { EQList } = require("lavalink-client");
 const queues = new Map();
-const fetch = require('isomorphic-unfetch');
+const path = require('path');
 const { incrementUserStats, getUserStats, getLeaderBoard } = require('./database.js')
-const { getDjText } = require('./dj.js')
+const { getDjText, playTTS, getTempFilePath, getTTSTempFile} = require('./dj.js')
+const fs = require('fs');
 
 const { getData, getPreview, getTracks, getDetails } = require('spotify-url-info')(fetch);
 const {EmbedBuilder} = require('discord.js')
@@ -54,12 +55,14 @@ module.exports = (client, shoukaku) => {
     }
 
     async function playNextFromQueue(guildId) {
+
         const queue = queues.get(guildId);
         if (!queue) return;
 
         let nextTrack = queue.tracks.shift();
 
         if (!nextTrack && queue.djMode) {
+
             const djSong = await db.getDjSong(guildId);
             
             if (!djSong) { 
@@ -93,12 +96,53 @@ module.exports = (client, shoukaku) => {
 
         // dj commentary
         if (queue.djMode) {
+            console.log(shoukaku.nodes); 
             try {
-                const djText = await getDjText(nextTrack.title, nextTrack.artist)
-                await queue.textChannel.send(`${djText}`)
-            }
-            catch (err) {
-                console.error("DJ TEXT ERROR: ", err)
+                const djText = await getDjText(nextTrack.title, nextTrack.artist);
+                await queue.textChannel.send(`${djText}`);
+
+                const ttsFilePath = await getTTSTempFile(djText); 
+                const ttsUrl = `http://gnarbot:3001/tts/${path.basename(ttsFilePath)}`;
+
+               // Get your Shoukaku node (the one connected to Lavalink)
+                const node = shoukaku.nodes.get("Lavalink"); // usually "Main" or whatever you named it
+
+                // Load TTS URL
+                const ttsResult = await node.rest.resolve(ttsUrl);
+
+                if (!ttsResult || !ttsResult.data) {
+                    console.error("Failed to load TTS track");
+                    // Fall through to play the main track anyway
+                    await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
+                    await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+                    return;
+                }
+
+                // Get the encoded track depending on load type
+                let ttsEncoded;
+                if (ttsResult.loadType === 'track') {
+                    ttsEncoded = ttsResult.data.encoded;
+                } else if (ttsResult.loadType === 'search' && ttsResult.data.length > 0) {
+                    ttsEncoded = ttsResult.data[0].encoded;
+                } else {
+                    console.error("Unexpected TTS load type:", ttsResult.loadType);
+                    await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
+                    await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+                    return;
+                }
+
+                // Play TTS immediately
+                await queue.player.playTrack({ track: { encoded: ttsEncoded } });
+                // After TTS ends, play the main track
+                queue.player.once("end", async () => {
+                    await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
+                    await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
+                    fs.unlink(ttsFilePath, () => {});
+                });
+
+                return; // exit so main track doesn't play twice
+            } catch (err) {
+                console.error("DJ TEXT ERROR: ", err);
             }
         }
 
@@ -551,6 +595,7 @@ module.exports = (client, shoukaku) => {
         }
 
         if (interaction.commandName === 'dj') {
+            await interaction.deferReply({ ephemeral: true });
             const voiceChannel = interaction.member.voice.channel;
             if (!voiceChannel) {
                 return interaction.reply("You must be in a voice channel first")
@@ -567,7 +612,6 @@ module.exports = (client, shoukaku) => {
                 await playNextFromQueue(interaction.guild.id);
             }
 
-            interaction.reply("DJ mode activated")
         }
     });
     // dont remember what this does other than clears stale bot states, but DONT DELETE
