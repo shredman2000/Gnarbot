@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const gTTS = require('google-tts-api');
+const ffmpeg = require('fluent-ffmpeg');
+
+const { GoogleGenAI } = require('@google/genai');
+const genai = new GoogleGenAI({ apiKey: process.env.GEM_KEY });
 const { Readable } = require('stream');
 const tmpDir = path.join(__dirname, 'tmp');
 if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
@@ -99,21 +103,47 @@ async function getDjText(songTitle, artist) {
 }
 
 
-
 async function getTTSTempFile(djText) {
-    const [response] = await ttsClient.synthesizeSpeech({
-        input: { text: djText },
-        voice: {
-            languageCode: 'en-US',
-            name: 'en-US-Chirp-HD-F', // deep male voice, good for DJ
-        },
-        audioConfig: {
-            audioEncoding: 'MP3',
+    const promptedText = `Read aloud in a warm, welcoming radio DJ tone. ${djText}`;
+    const response = await genai.models.generateContent({
+        model: 'gemini-2.5-pro-preview-tts',
+        contents: [{ parts: [{ text: promptedText}] }],
+        config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Achernar' }
+                }
+            }
         }
     });
-    const tempFile = getTempFilePath();
-    fs.writeFileSync(tempFile, response.audioContent, 'binary');
-    return tempFile;
+
+    const part = response.candidates[0].content.parts[0];
+    const audioData = part.inlineData.data;
+    const buffer = Buffer.from(audioData, 'base64');
+
+    const timestamp = Date.now();
+    const rawFile = path.join(tmpDir, `gnarbot_tts_${timestamp}_raw.pcm`);
+    const mp3File = path.join(tmpDir, `gnarbot_tts_${timestamp}.mp3`);
+
+    fs.writeFileSync(rawFile, buffer);
+
+    await new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(rawFile)
+            .inputOptions([
+                '-f s16le',   // raw 16-bit signed little-endian PCM
+                '-ar 24000',  // sample rate from MIME type
+                '-ac 1'       // mono
+            ])
+            .toFormat('mp3')
+            .on('end', resolve)
+            .on('error', reject)
+            .save(mp3File);
+    });
+
+    fs.unlink(rawFile, () => {}); // delete raw pcm immediately
+    return mp3File;
 }
 
 

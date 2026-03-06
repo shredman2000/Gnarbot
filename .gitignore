@@ -5,3 +5,4 @@ node_modules/
 docker-compose.yml
 *.mp3
 gcloud-key.json
+*.wav

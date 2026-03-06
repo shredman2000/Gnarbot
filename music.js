@@ -104,34 +104,39 @@ module.exports = (client, shoukaku) => {
         if (queue.djMode) {
             queue.playing = true;
             try {
-                const djText = await getDjText(nextTrack.title, nextTrack.artist);
-                //await queue.textChannel.send(`${djText}`);
+                const node = shoukaku.nodes.get("Lavalink");
 
-                const ttsFilePath = await getTTSTempFile(djText); 
+                let ttsFilePath;
+                let djText;
+
+                if (queue.pregenTTS) {
+                    // Use pre-generated TTS
+                    ttsFilePath = queue.pregenTTS.filePath;
+                    djText = queue.pregenTTS.text;
+                    queue.pregenTTS = null;
+                } else {
+                    // Fallback: generate now (first song or pregen failed)
+                    djText = await getDjText(nextTrack.title, nextTrack.artist);
+                    ttsFilePath = await getTTSTempFile(djText);
+                }
+
+                // Resolve both in parallel
                 const ttsUrl = `http://gnarbot:3001/tts/${path.basename(ttsFilePath)}`;
-
-               // Get your Shoukaku node (the one connected to Lavalink)
-                const node = shoukaku.nodes.get("Lavalink"); // usually "Main" or whatever you named it
-
-                // Load TTS URL
-                const ttsResult = await node.rest.resolve(ttsUrl);
+                const [ttsResult, trackResult] = await Promise.all([
+                    node.rest.resolve(ttsUrl),
+                    node.rest.resolve(`ytsearch:${nextTrack.title} ${nextTrack.artist}`)
+                ]);
 
                 if (!ttsResult || !ttsResult.data) {
-                    console.error("Failed to load TTS track");
-                    // Fall through to play the main track anyway
                     await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
                     await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
                     return;
                 }
 
-                // Get the encoded track depending on load type
                 let ttsEncoded;
                 if (ttsResult.loadType === 'track') {
                     ttsEncoded = ttsResult.data.encoded;
-                } else if (ttsResult.loadType === 'search' && ttsResult.data.length > 0) {
-                    ttsEncoded = ttsResult.data[0].encoded;
                 } else {
-                    console.error("Unexpected TTS load type:", ttsResult.loadType);
                     await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
                     await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
                     return;
@@ -140,7 +145,9 @@ module.exports = (client, shoukaku) => {
                 queue.suppressNextEnd = true;
                 await queue.player.playTrack({ track: { encoded: ttsEncoded } });
 
-                // After TTS ends, play the main track
+                // Kick off pre-generation for the NEXT song while TTS is playing
+                pregenerateTTS(guildId);
+
                 queue.player.once("end", async () => {
                     await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
                     await queue.textChannel.send(`Now playing: **${nextTrack.title}**`);
@@ -304,6 +311,24 @@ module.exports = (client, shoukaku) => {
         } catch (err) {
             console.error('playNextFromQueue error:', err);
             queues.delete(guildId);
+        }
+    }
+    async function pregenerateTTS(guildId) {
+        const queue = queues.get(guildId);
+        if (!queue || !queue.djMode) return;
+
+        try {
+            const djSong = await db.getDjSong(guildId);
+            if (!djSong) return;
+
+            const djText = await getDjText(djSong.song_name, djSong.song_artist);
+            const ttsFilePath = await getTTSTempFile(djText);
+
+            queue.pregenTTS = { filePath: ttsFilePath, text: djText };
+            console.log('TTS pre-generated for next track');
+        } catch (err) {
+            console.error('TTS pre-generation error:', err);
+            queue.pregenTTS = null;
         }
     }
 
