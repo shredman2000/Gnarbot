@@ -2,50 +2,53 @@ const { EQList } = require("lavalink-client");
 const queues = new Map();
 const fetch = require('isomorphic-unfetch');
 const { incrementUserStats, getUserStats, getLeaderBoard } = require('./database.js')
+const { getDjText } = require('./dj.js')
 
 const { getData, getPreview, getTracks, getDetails } = require('spotify-url-info')(fetch);
 const {EmbedBuilder} = require('discord.js')
+const db = require('./database.js')
 module.exports = (client, shoukaku) => {
 
 // helper function for finding or creating new queue, avoid race conditions
-async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
-    let queue = queues.get(guildId);
+    async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
+        let queue = queues.get(guildId);
 
-    console.log('getOrCreateQueue called');
-    console.log('queue exists:', !!queue);
-    console.log('shoukaku.players has guild:', shoukaku.players.has(guildId));
-    console.log('shoukaku.players keys:', [...shoukaku.players.keys()]);
+        console.log('getOrCreateQueue called');
+        console.log('queue exists:', !!queue);
+        console.log('shoukaku.players has guild:', shoukaku.players.has(guildId));
+        console.log('shoukaku.players keys:', [...shoukaku.players.keys()]);
 
-    if (!queue || !queue.player || queue.player.connection?.disconnected) {
-            // Manually clear Shoukaku's internal maps since destroy() isn't doing it
-        try {
-            const stale = shoukaku.players.get(guildId);
-            if (stale) await stale.destroy();
-        } catch {}
-        
-        // Force remove from both internal maps
-        shoukaku.players.delete(guildId);
-        shoukaku.connections.delete(guildId);
+        if (!queue || !queue.player || queue.player.connection?.disconnected) {
+                // Manually clear Shoukaku's internal maps since destroy() isn't doing it
+            try {
+                const stale = shoukaku.players.get(guildId);
+                if (stale) await stale.destroy();
+            } catch {}
+            
+            // Force remove from both internal maps
+            shoukaku.players.delete(guildId);
+            shoukaku.connections.delete(guildId);
 
-        console.log('attempting joinVoiceChannel...');
+            console.log('attempting joinVoiceChannel...');
 
-            const player = await shoukaku.joinVoiceChannel({
-                guildId,
-                channelId: voiceChannel.id,
-                shardId: 0,
-                deaf: true
-            });
+                const player = await shoukaku.joinVoiceChannel({
+                    guildId,
+                    channelId: voiceChannel.id,
+                    shardId: 0,
+                    deaf: true
+                });
 
-            queue = {
-                player,
-                tracks: [],
-                playing: false,
-                textChannel
-            };
+                queue = {
+                    player,
+                    tracks: [],
+                    playing: false,
+                    textChannel,
+                    djMode: false
+                };
 
-            queues.set(guildId, queue);
-            player.on('end', () => playNextFromQueue(guildId));
-        }
+                queues.set(guildId, queue);
+                player.on('end', () => playNextFromQueue(guildId));
+            }
 
         return queue;
     }
@@ -54,12 +57,51 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
         const queue = queues.get(guildId);
         if (!queue) return;
 
-        const nextTrack = queue.tracks.shift();
+        let nextTrack = queue.tracks.shift();
+
+        if (!nextTrack && queue.djMode) {
+            const djSong = await db.getDjSong(guildId);
+            
+            if (!djSong) { 
+                console.log("NO DJ SONG FOUND")
+                queue.playing = false;
+                return;
+            }
+            const node = [...shoukaku.nodes.values()][0]
+
+            const result = await node.rest.resolve(`ytsearch:${djSong.song_artist} ${djSong.song_name}`)
+
+            if (!result?.data?.length) {
+                queue.playing = false;
+                return;
+            }
+
+            const track = result.data[0]
+
+            nextTrack = {
+                encoded: track.encoded,
+                title: djSong.song_name,
+                artist: djSong.song_artist,
+            }
+        }
+
         if (!nextTrack) {
             queue.playing = false;
 
             return;
         }
+
+        // dj commentary
+        if (queue.djMode) {
+            try {
+                const djText = await getDjText(nextTrack.title, nextTrack.artist)
+                await queue.textChannel.send(`${djText}`)
+            }
+            catch (err) {
+                console.error("DJ TEXT ERROR: ", err)
+            }
+        }
+
         const lofi = nextTrack.lofi || false;
         const slowed = nextTrack.slowed || false;
         const bassBoosted = nextTrack.bassBoosted || false;
@@ -232,7 +274,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
             const member = interaction?.member;
             const voiceChannel = member?.voice.channel;
             if (!voiceChannel) { return; }
-            queue = await getOrCreateQueue(guildId, voiceChannel, interaction.channel)
+            queue = await getOrCreateQueue(guildId, voiceChannel, interaction.channel) // if errors change this to: let queue = queues.get(guildId); TODO:
         }
         queue.tracks.push(trackObj);
         const position = queue.tracks.length;
@@ -286,28 +328,44 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
                     return interaction.editReply("No results found.");
                 }
 
-                let track, trackTitle;
+                let track, trackTitle, trackArtist;
                 switch (result.loadType) {
                     case 'search':
                         track = result.data[0].encoded;
                         trackTitle = result.data[0].info.title;
+                        trackArtist = result.data[0].info.author;
                         break;
                     case 'track':
                         track = result.data.encoded;
                         trackTitle = result.data.info.title;
+                        trackArtist = result.data[0].info.author;
                         break;
                     case 'playlist':
                         track = result.data.tracks[0].encoded;
                         trackTitle = result.data.tracks[0].info.title;
+                        trackArtist = result.data[0].info.author;
                         break;
                     default:
                         return interaction.editReply("Unexpected response from Lavalink.");
                 }
 
+                // CLEANUP SONG NAME
+                let [artistGuess, songGuess] = trackTitle.split(" - ")
+                if (!songGuess) songGuess = trackTitle; // fallback if no "-"
+                if (!artistGuess) artistGuess = trackArtist; // fallback to video author
+
+                songGuess = songGuess.replace(/\s*(ft\.?|feat\.?|featuring)\s.*$/i, '').trim(); // remove ft or featuring or feat
+                songGuess = songGuess.replace(/\[.*?\]|\(.*?\)/g, '').trim(); // removing anything like [official music video]
+                songGuess = songGuess.replace(/\s+/g, ' '); // cleanup any leftover spaces
+                artistGuess = artistGuess.trim()
+
+                db.addToDJ(interaction.guild.id, songGuess, artistGuess, interaction.user.id)
+
                 const trackObj = {
                     encoded: track,
                     title: trackTitle,
                     requestedBy: interaction.user.id,
+                    artist: trackArtist,
                     bassBoosted,
                     eightD,
                     lateNight,
@@ -321,7 +379,7 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
                 if (interaction.commandName === 'play') { 
                     const queueWasEmpty = queue.tracks.length === 0;
                     await addToQueue(interaction.guild.id, trackObj, queueWasEmpty ? true : false, interaction);
-
+                    queue.djMode = false;
                     if (!queue.playing) {
                         await playNextFromQueue(interaction.guild.id);
                     } 
@@ -490,6 +548,26 @@ async function getOrCreateQueue(guildId, voiceChannel, textChannel) {
                     )
 
             interaction.reply({ embeds: [embed]})
+        }
+
+        if (interaction.commandName === 'dj') {
+            const voiceChannel = interaction.member.voice.channel;
+            if (!voiceChannel) {
+                return interaction.reply("You must be in a voice channel first")
+            }
+
+            const queue = await getOrCreateQueue(
+                interaction.guild.id,
+                voiceChannel,
+                interaction.channel,
+            );
+            queue.djMode = true;
+
+            if (!queue.playing) {
+                await playNextFromQueue(interaction.guild.id);
+            }
+
+            interaction.reply("DJ mode activated")
         }
     });
     // dont remember what this does other than clears stale bot states, but DONT DELETE

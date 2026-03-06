@@ -63,6 +63,11 @@ try {
             option.setName('lofi')
                 .setDescription('Enable lofi for this song')
                 .setRequired(false)
+        )
+        .addBooleanOption(option =>
+            option.setName('slowed')
+                .setDescription('Enable slowed + reverb for this song')
+                .setRequired(false)
         );
     commandBuilders.push(playNext.toJSON());
 
@@ -92,6 +97,11 @@ try {
         .setName('stats')
         .setDescription('Retrieve a leaderboard of how many songs each user has played')
     commandBuilders.push(stats.toJSON())
+
+    const dj = new SlashCommandBuilder()
+        .setName('dj')
+        .setDescription('Play music using the GnarBot DJ')
+    commandBuilders.push(dj.toJSON())
 
 } catch (err) {
   console.error("Error building commands:", err);
